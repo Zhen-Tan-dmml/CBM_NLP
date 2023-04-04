@@ -12,13 +12,14 @@ import pandas as pd
 import os 
 from cbm_template_models import MLP, FC
 from cbm_models import ModelXtoC_function, ModelCtoY_function
+from torch.optim.lr_scheduler import StepLR
 
 # Enable concept or not
 mode = 'independent'
 
 # Define the paths to the dataset and pretrained model
 # model_name = "microsoft/roberta-base"
-model_name = 'roberta-base' # 'bert-base-uncased' / 'roberta-base' / 'gpt2'
+model_name = 'bert-base-uncased' # 'bert-base-uncased' / 'roberta-base' / 'gpt2'
 
 # Load the tokenizer and pretrained model
 if model_name == 'roberta-base':
@@ -38,7 +39,7 @@ batch_size = 8
 is_aux_logits = False
 num_labels = 5  #label的个数              
 num_each_concept_classes  = 3  #每个concept有几个类
-num_epochs = 2
+num_epochs = 20
 
 data_type = "pure_cebab" # "pure_cebab"/"aug_cebab"/"aug_yelp"/"aug_cebab_yelp"
 # Load data
@@ -59,8 +60,8 @@ elif data_type == "aug_yelp":
     train_split = "train_aug_yelp"
     test_split = "test_aug_yelp"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../../dataset/cebab/train_yelp_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../../dataset/cebab/test_yelp_new_concept_single.csv")
 elif data_type == "aug_cebab_yelp":
     num_concept_labels = 10
 
@@ -68,8 +69,8 @@ elif data_type == "aug_cebab_yelp":
     test_split = "test_aug_cebab_yelp"
     train_split_cebab = pd.read_csv("../../dataset/cebab/train_cebab_new_concept_single.csv")
     test_split_cebab = pd.read_csv("../../dataset/cebab/test_cebab_new_concept_single.csv")
-    train_split_yelp = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    test_split_yelp = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    train_split_yelp = pd.read_csv("../../dataset/cebab/train_yelp_new_concept_single.csv")
+    test_split_yelp = pd.read_csv("../../dataset/cebab/test_yelp_new_concept_single.csv")
 
     CEBaB = {}
     CEBaB[train_split] = pd.concat([train_split_cebab, train_split_yelp], ignore_index=True)
@@ -171,9 +172,10 @@ class MyDataset(Dataset):
 
 
 # Load the data
-train_dataset = MyDataset('train_exclusive')
+train_dataset = MyDataset(train_split)
 # val_dataset = MyDataset('validation')
-test_dataset = MyDataset('test')
+test_dataset = MyDataset(test_split)
+
 
 
 # Define the dataloaders
@@ -292,7 +294,7 @@ for epoch in range(num_epochs):
         torch.save(ModelXtoC_layer, "./"+model_name+"_ModelXtoC_layer_independent.pth")
                    
 #step 2  CtoY
-num_epochs = 5
+num_epochs = 50
 print("train CtoY first, then treat predicted C of XtoC as input at test time!")
 #ModelCtoY_layer = ModelCtoY_function(n_class_attr = 0, n_attributes = num_each_concept_classes*num_concept_labels, num_classes = num_labels, expand_dim = 0)
 ModelCtoY_layer = ModelCtoY_function(n_attributes = num_each_concept_classes*num_concept_labels, num_classes = num_labels, expand_dim = 0)
@@ -301,8 +303,9 @@ model = torch.load("./"+model_name+"_independent.pth")
 ModelXtoC_layer = torch.load("./"+model_name+"_ModelXtoC_layer_independent.pth") 
 
 # Set up the optimizer and loss function
-optimizer = torch.optim.Adam(ModelCtoY_layer.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(ModelCtoY_layer.parameters(), lr=1e-3, weight_decay=1e-3)
 loss_fn = torch.nn.CrossEntropyLoss()
+scheduler = StepLR(optimizer, step_size=15*len(train_loader), gamma=0.5)
 
 # Train the model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -336,6 +339,8 @@ for epoch in range(num_epochs):
         loss = loss_fn(CtoY_logits, label)
         loss.backward()
         optimizer.step()
+        # adjust learning rate using scheduler
+        scheduler.step()
     
     ModelCtoY_layer.eval()
     test_accuracy = 0.

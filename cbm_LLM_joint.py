@@ -17,7 +17,7 @@ mode = 'joint'
 
 # Define the paths to the dataset and pretrained model
 # model_name = "microsoft/deberta-base"
-model_name = 'gpt2' # 'bert-base-uncased' / 'roberta-base' / 'gpt2'
+model_name = 'bert-base-uncased' # 'bert-base-uncased' / 'roberta-base' / 'gpt2'
 
 
 # Load the tokenizer and pretrained model
@@ -51,7 +51,7 @@ num_labels = 5  #label的个数
 num_epochs = 10                
 num_each_concept_classes = 3  #每个concept有几个类
 
-data_type = "aug_cebab" # "pure_cebab"/"aug_cebab"/"aug_yelp"/"aug_cebab_yelp"
+data_type = "aug_cebab_yelp" # "pure_cebab"/"aug_cebab"/"aug_yelp"/"aug_cebab_yelp"
 # Load data
 if data_type == "pure_cebab":
     num_concept_labels = 4
@@ -63,15 +63,15 @@ elif data_type == "aug_cebab":
     train_split = "train_aug_cebab"
     test_split = "test_aug_cebab"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("../dataset/cebab/train_cebab_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("../dataset/cebab/test_cebab_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../../dataset/cebab/train_cebab_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../../dataset/cebab/test_cebab_new_concept_single.csv")
 elif data_type == "aug_yelp":
     num_concept_labels = 10
     train_split = "train_aug_yelp"
     test_split = "test_aug_yelp"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../../dataset/cebab/train_yelp_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../../dataset/cebab/test_yelp_new_concept_single.csv")
 elif data_type == "aug_cebab_yelp":
     num_concept_labels = 10
 
@@ -79,8 +79,8 @@ elif data_type == "aug_cebab_yelp":
     test_split = "test_aug_cebab_yelp"
     train_split_cebab = pd.read_csv("../../dataset/cebab/train_cebab_new_concept_single.csv")
     test_split_cebab = pd.read_csv("../../dataset/cebab/test_cebab_new_concept_single.csv")
-    train_split_yelp = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    test_split_yelp = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    train_split_yelp = pd.read_csv("../../dataset/cebab/train_yelp_new_concept_single.csv")
+    test_split_yelp = pd.read_csv("../../dataset/cebab/test_yelp_new_concept_single.csv")
 
     CEBaB = {}
     CEBaB[train_split] = pd.concat([train_split_cebab, train_split_yelp], ignore_index=True)

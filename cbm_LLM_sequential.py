@@ -14,11 +14,11 @@ from cbm_template_models import MLP, FC
 from cbm_models import ModelXtoC_function, ModelCtoY_function
 
 # Enable concept or not
-mode = 'independent'
+mode = 'sequential'
 
 # Define the paths to the dataset and pretrained model
 # model_name = "microsoft/roberta-base"
-model_name = 'gpt2' # 'bert-base-uncased' / 'roberta-base' / 'gpt2'
+model_name = 'bert-base-uncased' # 'bert-base-uncased' / 'roberta-base' / 'gpt2'
 
 # Load the tokenizer and pretrained model
 if model_name == 'roberta-base':
@@ -39,11 +39,10 @@ batch_size = 8
 is_aux_logits = False
 num_labels = 5  #label的个数              
 num_each_concept_classes  = 3  #每个concept有几个类
-num_epochs = 10
+num_epochs = 20
 
-data_type = "aug_cebab" # "pure_cebab"/"aug_cebab"/"aug_yelp"/"aug_cebab_yelp"
+data_type = "pure_cebab" # "pure_cebab"/"aug_cebab"/"aug_yelp"/"aug_cebab_yelp"
 # Load data
-
 if data_type == "pure_cebab":
     num_concept_labels = 4
     train_split = "train_exclusive"
@@ -54,15 +53,15 @@ elif data_type == "aug_cebab":
     train_split = "train_aug_cebab"
     test_split = "test_aug_cebab"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("./train_cebab_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("./test_cebab_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../../dataset/cebab/train_cebab_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../../dataset/cebab/test_cebab_new_concept_single.csv")
 elif data_type == "aug_yelp":
     num_concept_labels = 10
     train_split = "train_aug_yelp"
     test_split = "test_aug_yelp"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../../dataset/cebab/train_yelp_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../../dataset/cebab/test_yelp_new_concept_single.csv")
 elif data_type == "aug_cebab_yelp":
     num_concept_labels = 10
 
@@ -70,8 +69,8 @@ elif data_type == "aug_cebab_yelp":
     test_split = "test_aug_cebab_yelp"
     train_split_cebab = pd.read_csv("../../dataset/cebab/train_cebab_new_concept_single.csv")
     test_split_cebab = pd.read_csv("../../dataset/cebab/test_cebab_new_concept_single.csv")
-    train_split_yelp = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    test_split_yelp = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    train_split_yelp = pd.read_csv("../../dataset/cebab/train_yelp_new_concept_single.csv")
+    test_split_yelp = pd.read_csv("../../dataset/cebab/test_yelp_new_concept_single.csv")
 
     CEBaB = {}
     CEBaB[train_split] = pd.concat([train_split_cebab, train_split_yelp], ignore_index=True)
@@ -200,7 +199,7 @@ model.to(device)
 # #step 1  XtoC
 
 print("train XtoC!")
-num_epochs=1
+num_epochs=20
 for epoch in range(num_epochs):
     ModelXtoC_layer.train()
     model.train()
@@ -293,7 +292,7 @@ for epoch in range(num_epochs):
         torch.save(ModelXtoC_layer, "./"+model_name+"_ModelXtoC_layer_sequential.pth")
 
 #step 2  CtoY
-num_epochs=10
+num_epochs=50
 
 print("train CtoY use trained XtoC!")
 # ModelCtoY_layer = ModelCtoY_function(n_class_attr = 0, n_attributes = num_each_concept_classes*num_concept_labels, num_classes = num_labels, expand_dim = 0)
@@ -302,7 +301,7 @@ model = torch.load("./"+model_name+"_sequential.pth")
 ModelXtoC_layer = torch.load("./"+model_name+"_ModelXtoC_layer_sequential.pth")
 
 # Set up the optimizer and loss function
-optimizer = torch.optim.Adam(ModelCtoY_layer.parameters(), lr=1e-2)
+optimizer = torch.optim.Adam(ModelCtoY_layer.parameters(), lr=1e-3)
 loss_fn = torch.nn.CrossEntropyLoss()
 
 # Train the model
@@ -338,11 +337,11 @@ for epoch in range(num_epochs):
         XtoC_logits = torch.stack(XtoC_output, dim=0)#[4,8,3]
         XtoC_logits=torch.transpose(XtoC_logits, 0, 1)#[8,4,3]
 
-        predictions_concept_labels = XtoC_logits.reshape(-1,num_each_concept_classes*num_concept_labels)  #logits: this line / one-hot:the following four lines 
-        # predictions_concept_labels = torch.argmax(XtoC_logits, axis=-1) #[8,4]
-        # predictions_concept_labels = predictions_concept_labels.reshape(-1,num_concept_labels)
-        # predictions_concept_labels = F.one_hot(predictions_concept_labels)
-        # predictions_concept_labels = predictions_concept_labels.reshape(-1,num_each_concept_classes*num_concept_labels)
+        # predictions_concept_labels = XtoC_logits.reshape(-1,num_each_concept_classes*num_concept_labels)  #logits: this line / one-hot:the following four lines 
+        predictions_concept_labels = torch.argmax(XtoC_logits, axis=-1) #[8,4]
+        predictions_concept_labels = predictions_concept_labels.reshape(-1,num_concept_labels)
+        predictions_concept_labels = F.one_hot(predictions_concept_labels)
+        predictions_concept_labels = predictions_concept_labels.reshape(-1,num_each_concept_classes*num_concept_labels)
 
         predictions_concept_labels = predictions_concept_labels.to(torch.float32)
         CtoY_logits = ModelCtoY_layer(predictions_concept_labels)  #[batch_size,concept_size]  
