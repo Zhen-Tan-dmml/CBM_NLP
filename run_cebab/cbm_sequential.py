@@ -20,7 +20,7 @@ mode = 'independent'
 
 # Define the paths to the dataset and pretrained model
 # model_name = "microsoft/roberta-base"
-model_name = 'lstm' # 'bert-base-uncased' / 'roberta-base' / 'gpt2' / 'lstm'
+model_name = 'bert-base-uncased' # 'bert-base-uncased' / 'roberta-base' / 'gpt2' / 'lstm'
 
 # Define the maximum sequence length and batch size
 max_len = 128
@@ -78,34 +78,41 @@ if data_type == "pure_cebab":
     num_concept_labels = 4
     train_split = "train_exclusive"
     test_split = "test"
+    val_split = "validation"
     CEBaB = load_dataset("CEBaB/CEBaB")
 elif data_type == "aug_cebab":
     num_concept_labels = 10
     train_split = "train_aug_cebab"
     test_split = "test_aug_cebab"
+    val_split = "val_aug_cebab"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("./train_cebab_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("./test_cebab_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../dataset/cebab/train_cebab_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../dataset/cebab/test_cebab_new_concept_single.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/cebab/dev_cebab_new_concept_single.csv")
 elif data_type == "aug_yelp":
     num_concept_labels = 10
     train_split = "train_aug_yelp"
     test_split = "test_aug_yelp"
+    val_split = "val_aug_yelp"
     CEBaB = {}
-    CEBaB[train_split] = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    CEBaB[test_split] = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
+    CEBaB[train_split] = pd.read_csv("../dataset/cebab/train_yelp_exclusive_new_concept_single.csv")
+    CEBaB[test_split] = pd.read_csv("../dataset/cebab/test_yelp_new_concept_single.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/cebab/dev_yelp_new_concept_single.csv")
 elif data_type == "aug_cebab_yelp":
     num_concept_labels = 10
-
     train_split = "train_aug_cebab_yelp"
     test_split = "test_aug_cebab_yelp"
-    train_split_cebab = pd.read_csv("../../dataset/cebab/train_cebab_new_concept_single.csv")
-    test_split_cebab = pd.read_csv("../../dataset/cebab/test_cebab_new_concept_single.csv")
-    train_split_yelp = pd.read_csv("../../dataset/yelp/train_yelp_new_concept_single.csv")
-    test_split_yelp = pd.read_csv("../../dataset/yelp/test_yelp_new_concept_single.csv")
-
+    val_split = "val_aug_cebab_yelp"
+    train_split_cebab = pd.read_csv("../dataset/cebab/train_cebab_new_concept_single.csv")
+    test_split_cebab = pd.read_csv("../dataset/cebab/test_cebab_new_concept_single.csv")
+    val_split_cebab = pd.read_csv("../dataset/cebab/dev_cebab_new_concept_single.csv")
+    train_split_yelp = pd.read_csv("../dataset/cebab/train_yelp_exclusive_new_concept_single.csv")
+    test_split_yelp = pd.read_csv("../dataset/cebab/test_yelp_new_concept_single.csv")
+    val_split_yelp = pd.read_csv("../dataset/cebab/dev_yelp_new_concept_single.csv")
     CEBaB = {}
     CEBaB[train_split] = pd.concat([train_split_cebab, train_split_yelp], ignore_index=True)
     CEBaB[test_split] = pd.concat([test_split_cebab, test_split_yelp], ignore_index=True)
+    CEBaB[val_split] = pd.concat([val_split_cebab, val_split_yelp], ignore_index=True)
 
 # Define a custom dataset class for loading the data
 class MyDataset(Dataset):
@@ -204,14 +211,14 @@ class MyDataset(Dataset):
 
 # Load the data
 train_dataset = MyDataset(train_split)
-# val_dataset = MyDataset('validation')
 test_dataset = MyDataset(test_split)
-
+val_dataset = MyDataset(val_split)
 
 # Define the dataloaders
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
+
 
 #Set ModelXtoC_layer and ModelCtoY_layer
 if model_name == 'lstm':
@@ -274,6 +281,7 @@ for epoch in range(num_epochs):
     model.eval()
     ModelXtoC_layer.eval()
     test_accuracy = 0.
+    val_accuracy=0
     predict_labels = np.array([])
     true_labels = np.array([])
     labelY = []
@@ -309,13 +317,13 @@ for epoch in range(num_epochs):
             logits = ModelXtoC_layer(pooled_output)
             logits = torch.cat(logits, dim=0)
             predictions = torch.argmax(logits, axis=1)
-            test_accuracy += torch.sum(predictions == concept_labels).item()
+            val_accuracy += torch.sum(predictions == concept_labels).item()
             predict_labels = np.append(predict_labels, predictions.cpu().numpy())
             true_labels = np.append(true_labels, concept_labels.cpu().numpy())
             predictions = predictions.reshape(-1,num_concept_labels)  # reshape 二维向量[batch_size*num_concept_labels]
             predict_concepts.append(predictions)
             labelY.append(label)
-        test_accuracy /= len(test_dataset)
+        val_accuracy /= len(val_dataset)
         num_true_labels = len(np.unique(true_labels))
 
         macro_f1_scores = []
@@ -325,16 +333,16 @@ for epoch in range(num_epochs):
             macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
             mean_macro_f1_score = np.mean(macro_f1_scores)
 
-    print(f"Epoch {epoch + 1}: Test Concept Acc = {test_accuracy*100/num_concept_labels} Test Concept Macro F1 = {mean_macro_f1_score*100}")
-    if test_accuracy > best_acc_score:
-        best_acc_score = test_accuracy
+    print(f"Epoch {epoch + 1}: Val Concept Acc = {val_accuracy*100/num_concept_labels} Test Concept Macro F1 = {mean_macro_f1_score*100}")
+    if val_accuracy > best_acc_score:
+        best_acc_score = val_accuracy
         best_predicted_concepts = predict_concepts
         best_labels = labelY
         torch.save(model, "./"+model_name+"_sequential.pth")
         torch.save(ModelXtoC_layer, "./"+model_name+"_ModelXtoC_layer_sequential.pth")
 
 #step 2  CtoY
-num_epochs=5
+num_epochs=1
 
 print("train CtoY use trained XtoC!")
 # ModelCtoY_layer = ModelCtoY_function(n_class_attr = 0, n_attributes = num_each_concept_classes*num_concept_labels, num_classes = num_labels, expand_dim = 0)
@@ -398,9 +406,63 @@ for epoch in range(num_epochs):
 
     ModelCtoY_layer.eval()
     test_accuracy = 0.
+    val_accuracy = 0.
+    best_acc_score = 0
     predict_labels = np.array([])
     true_labels = np.array([])
 
+    with torch.no_grad():
+        for batch in tqdm(val_loader, desc="Val", unit="batch"):
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            label = batch["label"].to(device)
+            food_concept = batch["food_concept"].to(device)
+            ambiance_concept=batch["ambiance_concept"].to(device)
+            service_concept=batch["service_concept"].to(device)
+            noise_concept=batch["noise_concept"].to(device)
+
+            if data_type != "pure_cebab":
+                cleanliness_concept = batch["cleanliness_concept"].to(device)
+                price_concept = batch["price_concept"].to(device)
+                location_concept = batch["location_concept"].to(device)
+                menu_variety_concept = batch["menu_variety_concept"].to(device)
+                waiting_time_concept = batch["waiting_time_concept"].to(device)
+                waiting_area_concept = batch["waiting_area_concept"].to(device)
+            concept_labels=batch["concept_labels"].to(device)  #8*4
+
+            concept_labels = F.one_hot(concept_labels)
+            concept_labels = concept_labels.reshape(-1,num_each_concept_classes*num_concept_labels)
+            concept_labels = concept_labels.to(torch.float32)
+            CtoY_logits = ModelCtoY_layer(concept_labels)
+
+            predictions_labels = torch.argmax(CtoY_logits, axis=1)
+
+            val_accuracy += torch.sum(predictions_labels == label).item()
+            predict_labels = np.append(predict_labels, predictions_labels.cpu().numpy())
+            true_labels = np.append(true_labels, label.cpu().numpy())
+
+
+        val_accuracy /= len(val_dataset)
+        num_true_labels = len(np.unique(true_labels))
+
+        macro_f1_scores = []
+        for label in range(num_true_labels):
+            label_pred = np.array(predict_labels) == label
+            label_true = np.array(true_labels) == label
+            macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
+            mean_macro_f1_score = np.mean(macro_f1_scores)
+
+    print(f"Epoch {epoch + 1}: Val Acc = {val_accuracy*100} Test Macro F1 = {mean_macro_f1_score*100}")
+    if val_accuracy > best_acc_score:
+        best_acc_score = val_accuracy
+        torch.save(ModelCtoY_layer, "./"+model_name+"_ModelCtoY_layer_sequential.pth")
+
+#step 3  Test
+num_epochs = 1
+print("Test!")
+ModelCtoY_layer = torch.load("./"+model_name+"_ModelCtoY_layer_sequential.pth") 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+for epoch in range(num_epochs):
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Test", unit="batch"):
             input_ids = batch["input_ids"].to(device)
@@ -442,5 +504,4 @@ for epoch in range(num_epochs):
             macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
             mean_macro_f1_score = np.mean(macro_f1_scores)
 
-
-    print(f"Epoch {epoch + 1}: Test Acc = {test_accuracy*100} Test Macro F1 = {mean_macro_f1_score*100}")
+    print(f"Epoch {epoch + 1}: Test Acc = {test_accuracy*100} Test Macro F1 = {mean_macro_f1_score*100}") 
