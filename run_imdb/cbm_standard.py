@@ -17,13 +17,13 @@ mode = 'standard'
 
 # Define the paths to the dataset and pretrained model
 # model_name = "microsoft/deberta-base"
-model_name = 'lstm' # 'bert-base-uncased' / 'roberta-base' / 'gpt2' / 'lstm'
+model_name = 'bert-base-uncased' # 'bert-base-uncased' / 'roberta-base' / 'gpt2' / 'lstm'
 
 # Define the maximum sequence length, batch size, num_concepts_size,num_labels,num_epochs
 max_len = 128
 batch_size = 8
 num_labels = 2 
-num_epochs = 20
+num_epochs = 1
 
 # Load the tokenizer and pretrained model
 if model_name == 'roberta-base':
@@ -67,38 +67,47 @@ if data_type == "manual_imdb":
     num_concept_labels = 4
     train_split = "manual_imdb"
     test_split = "manual_imdb_test"
+    val_split = "manual_imdb_val"
     CEBaB = {}
     CEBaB[train_split] = pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
     CEBaB[test_split] = pd.read_csv("../dataset/imdb/IMDB-test-manual.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/imdb/IMDB-dev-manual.csv")
 elif data_type == "aug_manual_imdb":
     num_concept_labels = 8
     train_split = "aug_manual_imdb"
     test_split = "aug_manual_imdb_test"
+    val_split = "manual_imdb_val"
     CEBaB = {}
     CEBaB[train_split] = pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
     CEBaB[test_split] = pd.read_csv("../dataset/imdb/IMDB-test-manual.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/imdb/IMDB-dev-manual.csv")
 elif data_type == "gen_imdb":
     num_concept_labels = 8
     train_split = "gen_imdb"
     test_split = "gen_imdb_test"
+    val_split = "gen_imdb_val"
     CEBaB = {}
     CEBaB[train_split] = pd.read_csv("../dataset/imdb/IMDB-train-generated.csv")
     CEBaB[test_split] = pd.read_csv("../dataset/imdb/IMDB-test-generated.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/imdb/IMDB-dev-generated.csv")
 elif data_type == "aug_gen_imdb":
     num_concept_labels = 8
-
     train_split = "aug_gen_imdb"
     test_split = "aug_gen_imdb_test"
+    val_split = "aug_gen_imdb_val"
     train_split_manual= pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
-    test_split_manual = pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
+    test_split_manual = pd.read_csv("../dataset/imdb/IMDB-test-manual.csv")
+    val_split_manual = pd.read_csv("../dataset/imdb/IMDB-dev-manual.csv")
     train_split_generated = pd.read_csv("../dataset/imdb/IMDB-train-generated.csv")
-    test_split_generated = pd.read_csv("../dataset/imdb/IMDB-train-generated.csv")
+    test_split_generated = pd.read_csv("../dataset/imdb/IMDB-test-generated.csv")
+    val_split_generated = pd.read_csv("../dataset/imdb/IMDB-dev-generated.csv")
 
     CEBaB = {}
     CEBaB[train_split] = pd.concat([train_split_manual, train_split_generated], ignore_index=True)
     CEBaB[test_split] = pd.concat([test_split_manual, test_split_generated], ignore_index=True)
-
+    CEBaB[val_split] = pd.concat([val_split_manual, val_split_generated], ignore_index=True)
 # Define a custom dataset class for loading the data
+
 class MyDataset(Dataset):
     # Split = train/dev/test
     def __init__(self, split, skip_class = "no majority"):
@@ -199,15 +208,13 @@ class MyDataset(Dataset):
 
 # Load the data
 train_dataset = MyDataset(train_split)
-# val_dataset = MyDataset('validation')
 test_dataset = MyDataset(test_split)
-
+val_dataset = MyDataset(val_split)
 
 # Define the dataloaders
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
-
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
 
 # normal
 if model_name == 'lstm':
@@ -257,8 +264,49 @@ for epoch in range(num_epochs):
     model.eval()
     classifier.eval()
     test_accuracy = 0.
+    val_accuracy = 0.
+    best_acc_score = 0
     predict_labels = np.array([])
     true_labels = np.array([])
+    with torch.no_grad():
+        for batch in tqdm(val_loader, desc="Val", unit="batch"):
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            label = batch["label"].to(device)
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            if model_name == 'lstm':
+                pooled_output = outputs.mean(1) 
+            else:
+                pooled_output = outputs.last_hidden_state.mean(1)   
+            logits = classifier(pooled_output)
+            predictions = torch.argmax(logits, axis=1)
+            val_accuracy += torch.sum(predictions == label).item()
+            predict_labels = np.append(predict_labels, predictions.cpu().numpy())
+            true_labels = np.append(true_labels, label.cpu().numpy())
+        
+        val_accuracy /= len(val_dataset)
+        num_true_labels = len(np.unique(true_labels))
+        macro_f1_scores = []
+        for label in range(num_true_labels):
+            label_pred = np.array(predict_labels) == label
+            label_true = np.array(true_labels) == label
+            macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
+            mean_macro_f1_score = np.mean(macro_f1_scores)
+
+    print(f"Epoch {epoch + 1}: Val Acc = {val_accuracy*100} Val Macro F1 = {mean_macro_f1_score*100}")
+    if val_accuracy > best_acc_score:
+        best_acc_score = val_accuracy
+        torch.save(classifier, "./"+model_name+"_classifier_standard.pth")
+        torch.save(model, "./"+model_name+"_model_standard.pth")
+
+####################### test
+num_epochs = 1
+print("Test!")
+model = torch.load("./"+model_name+"_model_standard.pth")
+classifier = torch.load("./"+model_name+"_classifier_standard.pth") 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+for epoch in range(num_epochs):
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Test", unit="batch"):
             input_ids = batch["input_ids"].to(device)
@@ -283,6 +331,4 @@ for epoch in range(num_epochs):
             label_true = np.array(true_labels) == label
             macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
             mean_macro_f1_score = np.mean(macro_f1_scores)
-
-
     print(f"Epoch {epoch + 1}: Test Acc = {test_accuracy*100} Test Macro F1 = {mean_macro_f1_score*100}")

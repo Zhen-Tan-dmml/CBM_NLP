@@ -21,7 +21,7 @@ mode = 'independent'
 
 # Define the paths to the dataset and pretrained model
 # model_name = "microsoft/roberta-base"
-model_name = 'lstm' # 'bert-base-uncased' / 'roberta-base' / 'gpt2' / 'lstm'
+model_name = 'bert-base-uncased' # 'bert-base-uncased' / 'roberta-base' / 'gpt2' / 'lstm'
 
 # Load the tokenizer and pretrained model
 if model_name == 'roberta-base':
@@ -70,44 +70,53 @@ batch_size = 8
 is_aux_logits = False
 num_labels = 2  #label的个数              
 num_each_concept_classes  = 3  #每个concept有几个类
-num_epochs = 20
+num_epochs = 1
 
-data_type = "aug_gen_imdb" # "manual_imdb"/"aug_manual_imdb"/"gen_imdb"/"aug_gen_imdb"
+data_type = "gen_imdb" # "manual_imdb"/"aug_manual_imdb"/"gen_imdb"/"aug_gen_imdb"
 # Load data
 if data_type == "manual_imdb":
     num_concept_labels = 4
     train_split = "manual_imdb"
     test_split = "manual_imdb_test"
+    val_split = "manual_imdb_val"
     CEBaB = {}
     CEBaB[train_split] = pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
     CEBaB[test_split] = pd.read_csv("../dataset/imdb/IMDB-test-manual.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/imdb/IMDB-dev-manual.csv")
 elif data_type == "aug_manual_imdb":
     num_concept_labels = 8
     train_split = "aug_manual_imdb"
     test_split = "aug_manual_imdb_test"
+    val_split = "manual_imdb_val"
     CEBaB = {}
     CEBaB[train_split] = pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
     CEBaB[test_split] = pd.read_csv("../dataset/imdb/IMDB-test-manual.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/imdb/IMDB-dev-manual.csv")
 elif data_type == "gen_imdb":
     num_concept_labels = 8
     train_split = "gen_imdb"
     test_split = "gen_imdb_test"
+    val_split = "gen_imdb_val"
     CEBaB = {}
     CEBaB[train_split] = pd.read_csv("../dataset/imdb/IMDB-train-generated.csv")
     CEBaB[test_split] = pd.read_csv("../dataset/imdb/IMDB-test-generated.csv")
+    CEBaB[val_split] = pd.read_csv("../dataset/imdb/IMDB-dev-generated.csv")
 elif data_type == "aug_gen_imdb":
     num_concept_labels = 8
-
     train_split = "aug_gen_imdb"
     test_split = "aug_gen_imdb_test"
+    val_split = "aug_gen_imdb_val"
     train_split_manual= pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
-    test_split_manual = pd.read_csv("../dataset/imdb/IMDB-train-manual.csv")
+    test_split_manual = pd.read_csv("../dataset/imdb/IMDB-test-manual.csv")
+    val_split_manual = pd.read_csv("../dataset/imdb/IMDB-dev-manual.csv")
     train_split_generated = pd.read_csv("../dataset/imdb/IMDB-train-generated.csv")
-    test_split_generated = pd.read_csv("../dataset/imdb/IMDB-train-generated.csv")
+    test_split_generated = pd.read_csv("../dataset/imdb/IMDB-test-generated.csv")
+    val_split_generated = pd.read_csv("../dataset/imdb/IMDB-dev-generated.csv")
 
     CEBaB = {}
     CEBaB[train_split] = pd.concat([train_split_manual, train_split_generated], ignore_index=True)
     CEBaB[test_split] = pd.concat([test_split_manual, test_split_generated], ignore_index=True)
+    CEBaB[val_split] = pd.concat([val_split_manual, val_split_generated], ignore_index=True)
 
 # Define a custom dataset class for loading the data
 class MyDataset(Dataset):
@@ -212,14 +221,13 @@ class MyDataset(Dataset):
 train_dataset = MyDataset(train_split)
 # val_dataset = MyDataset('validation')
 test_dataset = MyDataset(test_split)
-
+val_dataset = MyDataset(val_split)
 
 
 # Define the dataloaders
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-# val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
-
+val_loader = DataLoader(val_dataset, batch_size=batch_size)
 #Set ModelXtoC_layer and ModelCtoY_layer
 if model_name == 'lstm':
     ModelXtoC_layer = ModelXtoC_function(num_classes = num_each_concept_classes, n_attributes = num_concept_labels, bottleneck = True, expand_dim = 0,Lstm=True,aux_logits=is_aux_logits)
@@ -281,6 +289,7 @@ for epoch in range(num_epochs):
     model.eval()
     ModelXtoC_layer.eval()
     test_accuracy = 0.
+    val_accuracy = 0.
     predict_labels = np.array([])
     true_labels = np.array([])
     labelY = []
@@ -289,7 +298,7 @@ for epoch in range(num_epochs):
     best_acc_score = 0
 
     with torch.no_grad():
-        for batch in tqdm(test_loader, desc="Test", unit="batch"):
+        for batch in tqdm(val_loader, desc="Val", unit="batch"):
             input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             label = batch["label"].to(device)
@@ -315,13 +324,13 @@ for epoch in range(num_epochs):
             logits = ModelXtoC_layer(pooled_output)     
             logits = torch.cat(logits, dim=0)
             predictions = torch.argmax(logits, axis=1)
-            test_accuracy += torch.sum(predictions == concept_labels).item()
+            val_accuracy += torch.sum(predictions == concept_labels).item()
             predict_labels = np.append(predict_labels, predictions.cpu().numpy())
             true_labels = np.append(true_labels, concept_labels.cpu().numpy())
             predictions = predictions.reshape(-1,num_concept_labels)  # reshape 二维向量[batch_size*num_concept_labels]
             predict_concepts.append(predictions)
             labelY.append(label)
-        test_accuracy /= len(test_dataset)
+        val_accuracy /= len(val_dataset)
         num_true_labels = len(np.unique(true_labels))
         
         macro_f1_scores = []
@@ -331,17 +340,17 @@ for epoch in range(num_epochs):
             macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
             mean_macro_f1_score = np.mean(macro_f1_scores)
 
-    print(f"Epoch {epoch + 1}: Test Concept Acc = {test_accuracy*100/num_concept_labels} Test Concept Macro F1 = {mean_macro_f1_score*100}")
-    if test_accuracy > best_acc_score:
-        best_acc_score = test_accuracy
+    print(f"Epoch {epoch + 1}: Val Concept Acc = {val_accuracy*100/num_concept_labels} Test Concept Macro F1 = {mean_macro_f1_score*100}")
+    if val_accuracy > best_acc_score:
+        best_acc_score = val_accuracy
         best_predicted_concepts = predict_concepts
         best_labels = labelY
         torch.save(model, "./"+model_name+"_independent.pth")
         torch.save(ModelXtoC_layer, "./"+model_name+"_ModelXtoC_layer_independent.pth")
                    
 #step 2  CtoY
-num_epochs = 15
-print("train CtoY first, then treat predicted C of XtoC as input at test time!")
+num_epochs = 1
+print("train CtoY first, then treat predicted C of XtoC as input at val time!")
 #ModelCtoY_layer = ModelCtoY_function(n_class_attr = 0, n_attributes = num_each_concept_classes*num_concept_labels, num_classes = num_labels, expand_dim = 0)
 ModelCtoY_layer = ModelCtoY_function(n_attributes = num_each_concept_classes*num_concept_labels, num_classes = num_labels, expand_dim = 0)
 model = torch.load("./"+model_name+"_independent.pth")
@@ -389,9 +398,81 @@ for epoch in range(num_epochs):
     
     ModelCtoY_layer.eval()
     test_accuracy = 0.
+    val_accuracy = 0.
+    best_acc_score = 0
     predict_labels = np.array([])
     true_labels = np.array([])
 
+    with torch.no_grad():
+        for batch in tqdm(val_loader, desc="Val", unit="batch"):
+            input_ids = batch["input_ids"].to(device)
+            attention_mask = batch["attention_mask"].to(device)
+            label = batch["label"].to(device)
+            acting_concept = batch["acting_concept"].to(device)
+            storyline_concept=batch["storyline_concept"].to(device)
+            emotional_concept=batch["emotional_concept"].to(device)
+            cinematography_concept=batch["cinematography_concept"].to(device)
+            
+            if data_type != "manual_imdb":
+                soundtrack_concept = batch["soundtrack_concept"].to(device)
+                directing_concept = batch["directing_concept"].to(device)
+                background_concept = batch["background_concept"].to(device)
+                editing_concept = batch["editing_concept"].to(device)                   
+            concept_labels=batch["concept_labels"].to(device)  #8*4
+
+            # 用训练好的 x->c model 得预测 concept labels
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+            if model_name == 'lstm':
+                pooled_output = outputs
+            else:
+                pooled_output = outputs.last_hidden_state.mean(1) 
+            logits = ModelXtoC_layer(pooled_output)     #4个8*3
+
+            logits = torch.stack(logits, dim=0)  #[4,8,3]
+            logits=torch.transpose(logits, 0, 1) #[8,4,3]
+
+            # predictions_concept_labels = logits.reshape(-1,num_each_concept_classes*num_concept_labels)  #logits: this line / one-hot:the following four lines 
+            predictions_concept_labels = torch.argmax(logits, axis=-1) #[8,4]
+            predictions_concept_labels = predictions_concept_labels.reshape(-1,num_concept_labels)  # reshape 二维向量[batch_size*num_concept_labels]
+            predictions_concept_labels = F.one_hot(predictions_concept_labels)
+            predictions_concept_labels = predictions_concept_labels.reshape(-1,num_each_concept_classes*num_concept_labels)
+
+            predictions_concept_labels = predictions_concept_labels.to(torch.float32)
+            CtoY_logits = ModelCtoY_layer(predictions_concept_labels)
+            predictions_labels = torch.argmax(CtoY_logits, axis=1)
+
+            val_accuracy += torch.sum(predictions_labels == label).item()
+            predict_labels = np.append(predict_labels, predictions_labels.cpu().numpy())
+            true_labels = np.append(true_labels, label.cpu().numpy())
+
+        val_accuracy /= len(val_dataset)
+        num_true_labels = len(np.unique(true_labels))
+        
+        macro_f1_scores = []
+        for label in range(num_true_labels):
+            label_pred = np.array(predict_labels) == label
+            label_true = np.array(true_labels) == label
+            macro_f1_scores.append(f1_score(label_true, label_pred, average='macro'))
+            mean_macro_f1_score = np.mean(macro_f1_scores)
+
+
+    print(f"Epoch {epoch + 1}: Val Acc = {val_accuracy*100} Test Macro F1 = {mean_macro_f1_score*100}")
+    if val_accuracy > best_acc_score:
+        best_acc_score = val_accuracy
+        torch.save(ModelCtoY_layer, "./"+model_name+"_ModelCtoY_layer_independent.pth")
+
+
+#step 3  CtoY
+num_epochs = 1
+print("Test!")
+
+model = torch.load("./"+model_name+"_independent.pth")
+ModelXtoC_layer = torch.load("./"+model_name+"_ModelXtoC_layer_independent.pth") 
+ModelCtoY_layer = torch.load("./"+model_name+"_ModelCtoY_layer_independent.pth") 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# classifier.to(device)
+
+for epoch in range(num_epochs):
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Test", unit="batch"):
             input_ids = batch["input_ids"].to(device)
