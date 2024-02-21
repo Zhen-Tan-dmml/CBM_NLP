@@ -1,4 +1,12 @@
 # Interpreting Pretrained Language Models via Concept Bottlenecks [PAKDD'24 (Oral)]
+Please kindly check our new follow-up work accepted to [**AAAI'24**](https://arxiv.org/pdf/2312.15033.pdf): [**SpaseCBM**](https://github.com/Zhen-Tan-dmml/SparseCBM.git).
+
+## Abstract
+Pretrained language models (PLMs) have made significant strides in various natural language processing tasks. However, the lack of interpretability due to their "black-box" nature poses challenges for responsible implementation. Although previous studies have attempted to improve interpretability by using, e.g., attention weights in self-attention layers, these weights often lack clarity, readability, and intuitiveness.
+
+In this research, we propose a novel approach to interpreting PLMs by employing ***high-level, meaningful concepts*** that are easily understandable for humans. For example, we learn the concept of "Food" and investigate how it influences the prediction of a model's sentiment towards a restaurant review. 
+
+We introduce C^3M, which combines human-annotated and machine-generated concepts to extract hidden neurons designed to encapsulate semantically meaningful and task-specific concepts. Through empirical evaluations on real-world datasets, we show that our approach offers valuable insights to interpret PLM behavior, helps diagnose model failures, and enhances model robustness amidst noisy concept labels.
 
 ## Install
 
