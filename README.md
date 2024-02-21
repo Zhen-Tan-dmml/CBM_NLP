@@ -1,5 +1,5 @@
 # Interpreting Pretrained Language Models via Concept Bottlenecks [PAKDD'24 (Oral)]
-Please kindly check our new follow-up work accepted to [**AAAI'24**](https://arxiv.org/pdf/2312.15033.pdf): [**SpaseCBM**](https://github.com/Zhen-Tan-dmml/SparseCBM.git).
+Kindly check our new follow-up work accepted to [**AAAI'24**](https://arxiv.org/pdf/2312.15033.pdf): [**SpaseCBM**](https://github.com/Zhen-Tan-dmml/SparseCBM.git).
 
 ## Abstract
 Pretrained language models (PLMs) have made significant strides in various natural language processing tasks. However, the lack of interpretability due to their "black-box" nature poses challenges for responsible implementation. Although previous studies have attempted to improve interpretability by using, e.g., attention weights in self-attention layers, these weights often lack clarity, readability, and intuitiveness.
